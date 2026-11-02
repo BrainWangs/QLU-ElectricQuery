@@ -6,7 +6,7 @@
 
 ## 📈 电费余额趋势（自动更新）
 
-每次定时查询后由 GitHub Actions 自动重画。绿色圆点 = 充值；橙色/红色虚线 = 预警/告急阈值。
+每次定时查询后由 GitHub Actions 自动重画。蓝色折线，每个数据点标注余额数值；绿色圆点 = 充值；橙色/红色虚线 = 预警/告急阈值。
 
 ### 近 3 天
 
@@ -20,7 +20,8 @@
 
 ![近 30 天](docs/charts/chart-30d.svg)
 
-> 数据由定时查询积累，图上折线随时间自然变密。
+> 上面三张图是**示例数据**，用来演示图表长什么样。你 Fork 或基于模板建仓之后，
+> 第一次定时查询跑完，Actions 就会用你自己的真实余额重画这三张图。
 
 ---
 
@@ -56,8 +57,6 @@
 
 账号和密码**各自**这样加密一次，作为 `userName` / `pwd` 提交。
 公钥是前端 JS 里硬编码的，逆向时直接抠出来。
-
-> 密码里的 `@` 就是密码本身的一部分，没有特殊编码含义——原样加密即可。
 
 ### 2. 换 SESSION：两步走，第一步不能跟随跳转
 
@@ -268,7 +267,7 @@ INFO  🟢 电费日报
 git clone https://github.com/<你的用户名>/<仓库名>.git
 cd <仓库名>
 npm install
-npm test          # 应该看到 81 pass
+npm test          # 应该看到 88 pass
 ```
 
 **2. 一条命令完成配置**
@@ -284,7 +283,7 @@ node bin/elec.js setup --user 你的学号 --pass "你的密码"
 node bin/elec.js setup --user 你的学号 --pass "你的密码" --meter "示例园#1#A101"
 ```
 
-> 密码里有 `$`、`!`、`@` 这类字符时，**一定要用引号包起来**，
+> 密码里有 `$`、`!` 这类特殊字符时，**一定要用引号包起来**，
 > 否则 shell 会先解释掉。
 
 **3. 查一次试试**
@@ -348,54 +347,34 @@ node bin/elec.js watch
 
 改完本地生效；走 Actions 的话记得同步改 workflow 里的 `cron`。
 
-### 如果要把这套东西公开成模板给别人用
+### 万一你想把仓库改成公开
 
-自己用（存着真实余额和宿舍号）和给别人用（当模板）**建议分成两个仓库**，
-不要靠一个仓库来回切换脱敏开关：
+跑起来之后仓库里就有你的真实数据了：`data` 分支存着余额曲线和 `history.jsonl`，
+`docs/charts/*.svg` 里也有你的宿舍编号，提交记录里还有你填过的宿舍号。
 
-**1. 建一个干净的空仓库当模板**
-
-不要 Fork 自己的私有仓库（会带上 `data` 分支和提交历史），直接新建一个空仓库，
-把代码推上去：
-
-```bash
-git clone --depth 1 https://github.com/<你>/QLUhelper.git /tmp/tpl
-cd /tmp/tpl
-rm -rf .git data docs/charts/*.svg
-git init -b main
-git add -A && git commit -m "init"
-git remote add origin https://github.com/<你>/QLUhelper-template.git
-git push -u origin main
-```
-
-**2. 勾上 Template repository**
-
-模板仓库页 → `Settings` → `General` → 勾 **Template repository**。
-勾完仓库首页右上角会出现绿色的 `Use this template` 按钮，别人点一下就能生成
-一份历史干净、不含你任何数据的新仓库。
-
-**3. 别把私有的那份也公开**
-
-私有仓库里的 `data` 分支存着真实的余额曲线和历史 `history.jsonl`，
-`docs/charts/*.svg` 里也有你宿舍的编号。要么保持私有，要么按下面清干净。
-
-**4. 如果非要在同一个仓库里公开**
-
-公开前**务必**把脱敏打开，否则宿舍号会出现在快照和历史里：
+公开前**务必**打开脱敏开关：
 
 ```
 QLGYDX_REDACT = 1
 ```
 
-设了这个之后：房号打码成 `***`、不再发布历史数据和图表
-（`check-snapshot.js` 会在发布前校验，没打码就让任务失败）。
-同时记得删掉 `data` 分支和 `docs/charts/` 下的旧图——历史文件不会被自动打码。
+设了之后：房号打码成 `***`、不再发布历史数据和图表，
+`scripts/check-snapshot.js` 会在发布前校验，没打码就直接让任务失败。
+
+另外手动清一下历史残留——**脱敏开关不会追溯已发布的内容**：
+
+```bash
+git push origin --delete data      # 删掉整个 data 分支
+rm -rf docs/charts/*.svg           # 删掉已生成的图
+git commit -am "清空历史图表" && git push
+```
+
+> 最省事的做法还是保持私有：私有仓库照样能跑 `schedule`，额度也够用。
 
 ---
 
 ## 注意事项
 
-- 密码中的 `@` 是密码本身的一部分，原样提交即可（曾怀疑有特殊编码行为，实测无）
 - 站点在 23:45–00:00 维护，凌晨时段不查询
 - 接口只提供余额，无用电量/消费流水；消耗速率与预测靠本地历史推算
 - 请合理设置查询间隔，避免对学校服务器造成压力

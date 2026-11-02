@@ -8,11 +8,11 @@ name: 电费查询
 
 on:
   schedule:
-    # 每 2 小时一次，只在 08:00–24:00 之间跑（UTC+8 时区）。
-    # 凌晨 0:00–8:00 不查询：那段时间没人看，也省额度。
-    # 实际触发时间点：08,10,12,14,16,18,20,22 点。
-    - cron: '0 8-23/2 * * *'
-      timezone: 'Asia/Shanghai'
+    # 每 2 小时一次，只在【北京时间】08:00–24:00 之间跑，凌晨不查。
+    # 注意：GitHub Actions 的 cron 只按 UTC 解析（on.schedule 不支持 timezone 字段），
+    # 北京 08,10,12,14,16,18,20,22 点 = UTC 00,02,04,06,08,10,12,14。
+    # 分钟用 17 而不是 0：GitHub 官方文档说整点是调度高峰，任务容易被延迟甚至丢弃。
+    - cron: '17 0,2,4,6,8,10,12,14 * * *'
   # 允许手动触发（私有仓库 + 外部 cron 方案就靠这个）
   workflow_dispatch:
     inputs:
@@ -71,6 +71,21 @@ jobs:
           key: elec-state-${{ github.run_id }}
           restore-keys: |
             elec-state-
+
+      # cache 是 best-effort（可能丢失/被清），data 分支才是历史的真正权威。
+      # 每次 run 都把 data 分支上的 history.jsonl 合并进本地缓存文件，
+      # 防止某次缓存丢失后从零开始，发布时把积累的历史覆盖掉。
+      - name: 从 data 分支补齐历史
+        run: |
+          git fetch origin data --depth 1 || true
+          if git cat-file -e origin/data:history.jsonl 2>/dev/null; then
+            git show origin/data:history.jsonl >> data/history.jsonl
+            # 行内 queriedAt 的值在第 4 个引号字段：{"queriedAt":"..."}
+            sort -u -t'"' -k4,4 data/history.jsonl -o data/history.jsonl || true
+            echo "已从 data 分支合并历史，当前 $(wc -l < data/history.jsonl) 条"
+          else
+            echo "data 分支尚无 history.jsonl，跳过"
+          fi
 
       - name: 执行查询
         env:
@@ -148,6 +163,13 @@ jobs:
           # 让 CI 直接失败而不是把真实房间号推上去。未开脱敏时只提示不拦截。
           node scripts/check-snapshot.js data/latest.json
 
+          # 关键：orphan checkout 会清空整个工作区（rm -rf ./*），
+          # 而本 job 结束时 actions/cache 要在工作区里找 data/state.json 和 data/history.jsonl
+          # 来保存缓存。先把 data/ 备份出去，推完分支再放回来，否则缓存永远存不上
+          # （症状：Post 阶段报 "Path Validation Error"，history 每次从零开始，图表永远只有一个点）。
+          rm -rf /tmp/elec-data-backup
+          cp -r data /tmp/elec-data-backup
+
           git checkout --orphan data-tmp 2>/dev/null || git checkout data-tmp
           git rm -rf . --quiet || true
           rm -rf ./* 2>/dev/null || true
@@ -155,6 +177,10 @@ jobs:
           git add -A
           git commit -m "snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo '没有变化，跳过提交'
           git push origin HEAD:data --force
+
+          # 把 data/ 放回工作区，让 post-job 的缓存保存能找到文件
+          rm -rf data
+          cp -r /tmp/elec-data-backup data
 
       # 图表复制回 main 分支 docs/charts/（README 相对路径引用，私有仓库可见）
       # 注意：if 不能用 hashFiles——前一步 orphan checkout 后工作区已变空，hashFiles 恒为空

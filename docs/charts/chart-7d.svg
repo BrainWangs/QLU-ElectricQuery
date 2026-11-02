@@ -11,13 +11,28 @@
 <text x="51" y="113.5" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">75</text>
 <line x1="58" y1="32" x2="742" y2="32" stroke="#94a3b8" stroke-opacity="0.25" stroke-width="1"/>
 <text x="51" y="36" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">100</text>
-<text x="58" y="370" font-family="sans-serif" font-size="12" fill="#64748b">10/25 14:24</text>
-<text x="742" y="370" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">11/01 14:24</text>
+<text x="58" y="370" font-family="sans-serif" font-size="12" fill="#64748b">10/26 10:53</text>
+<text x="742" y="370" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">11/02 10:53</text>
 <line x1="58" y1="326.5" x2="742" y2="326.5" stroke="#dc2626" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 3"/>
 <text x="742" y="321.5" font-family="sans-serif" font-size="12" fill="#dc2626" text-anchor="end">告急 5 元</text>
 <line x1="58" y1="311" x2="742" y2="311" stroke="#f59e0b" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 3"/>
 <text x="742" y="306" font-family="sans-serif" font-size="12" fill="#f59e0b" text-anchor="end">预警 10 元</text>
-<polyline points="742.0,142.0" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="742.0" cy="142.0" r="3" fill="#16a34a"/>
-<text x="737.0" y="130.0" font-family="sans-serif" font-size="14" font-weight="700" fill="#16a34a" text-anchor="end">64.50 元</text>
+<polyline points="111.5,163.5 148.7,169.1 210.3,173.6 243.0,180.9 295.3,131.2 324.7,137.9 368.8,144.0 427.3,149.2 467.2,131.2 526.8,134.8 588.1,140.7 646.3,145.9 709.6,131.2" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="111.5" cy="163.5" r="3" fill="#16a34a"/>
+<circle cx="148.7" cy="169.1" r="3" fill="#16a34a"/>
+<circle cx="210.3" cy="173.6" r="3" fill="#16a34a"/>
+<circle cx="243.0" cy="180.9" r="3" fill="#16a34a"/>
+<circle cx="295.3" cy="131.2" r="5" fill="#16a34a"/>
+<text x="295.3" y="121.2" font-family="sans-serif" font-size="12" fill="#16a34a" text-anchor="middle">充值</text>
+<circle cx="324.7" cy="137.9" r="3" fill="#16a34a"/>
+<circle cx="368.8" cy="144.0" r="3" fill="#16a34a"/>
+<circle cx="427.3" cy="149.2" r="3" fill="#16a34a"/>
+<circle cx="467.2" cy="131.2" r="5" fill="#16a34a"/>
+<text x="467.2" y="121.2" font-family="sans-serif" font-size="12" fill="#16a34a" text-anchor="middle">充值</text>
+<circle cx="526.8" cy="134.8" r="3" fill="#16a34a"/>
+<circle cx="588.1" cy="140.7" r="3" fill="#16a34a"/>
+<circle cx="646.3" cy="145.9" r="3" fill="#16a34a"/>
+<circle cx="709.6" cy="131.2" r="5" fill="#16a34a"/>
+<text x="709.6" y="121.2" font-family="sans-serif" font-size="12" fill="#16a34a" text-anchor="middle">充值</text>
+<text x="704.6" y="119.2" font-family="sans-serif" font-size="14" font-weight="700" fill="#16a34a" text-anchor="end">68.00 元</text>
 </svg>

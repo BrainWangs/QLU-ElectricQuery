@@ -293,7 +293,7 @@ async function cmdSetup() {
     log.error('需要账号密码。两种给法：');
     log.error('  1) node bin/elec.js setup --user 你的学号 --pass 你的密码');
     log.error('  2) 先填好 config.json 的 account.username / account.password');
-    log.error('密码若以 @ 开头，记得用引号包住，例如 --pass "@Abc123456"');
+    log.error('密码含空格或特殊字符时记得用引号包住');
     process.exit(2);
   }
 
