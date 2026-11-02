@@ -26,6 +26,7 @@ const store = require('../lib/alert');
 const { notify, activeChannels, hasRemoteChannel } = require('../lib/notify');
 const cloud = require('../lib/cloud');
 const log = require('../lib/logger');
+const time = require('../lib/time');
 
 const args = process.argv.slice(2);
 const cmd = args[0] || 'query';
@@ -197,16 +198,19 @@ async function doQuery(cfg, client, state) {
   }
 }
 
-/** 生效时段判断，支持跨夜（如 22 点–次日 6 点） */
+/** 生效时段判断，支持跨夜（如 22 点–次日 6 点）。
+ *  注意用北京时间：GitHub Actions 的 runner 是 UTC 时区，
+ *  直接 new Date().getHours() 会把 activeHours [8,24] 过滤成 UTC 8–24 点
+ *  （= 北京 16:00–次日 08:00），导致北京早上的定时查询被误跳过。 */
 function inActiveHours(cfg) {
-  const h = new Date().getHours();
+  const h = time.beijingHour();
   const [a, b] = cfg.schedule.activeHours;
   if (a === b) return true;          // 0-0 之类视为全天
   return a <= b ? (h >= a && h < b) : (h >= a || h < b);
 }
 
-/** 今天的日期键（本地时区），用于「每天只发一次报告」 */
-const dayKey = () => new Date().toLocaleDateString('zh-CN');
+/** 今天的日期键（北京时间），用于「每天只发一次报告」 */
+const dayKey = () => time.dayKey();
 
 // ---------------- 命令实现 ----------------
 
@@ -229,7 +233,7 @@ async function cmdQuery() {
   log.info(`  地点：${r.location || r.custRechNo}`);
   log.info(`  余额：${r.balance === null ? '未知' : r.balance.toFixed(2) + ' 元'}`);
   if (r.meterAddress) log.info(`  表号：${r.meterAddress}`);
-  log.info(`  时间：${new Date(r.queriedAt).toLocaleString('zh-CN', { hour12: false })}`);
+  log.info(`  时间：${time.fmtBeijing(new Date(r.queriedAt))}`);
   log.info('────────────────────────────');
 }
 
@@ -450,6 +454,11 @@ async function cmdCheck() {
       const c = e.cause;
       log.error(`  cause: ${c.code || ''} ${c.message || c}`.trimEnd());
       if (c.errors) for (const sub of c.errors) log.error(`    - ${sub.code || ''} ${sub.message || sub}`);
+      if (c.code === 'UND_ERR_CONNECT_TIMEOUT' && e.stack) {
+        // 打出请求 URL：分不清是站点域名还是 DoH 查询本身挂了
+        const m = String(e.stack).match(/at\s+.*?_raw.*|https?:\/\/\S+/);
+        if (m) log.error(`  at: ${m[0].slice(0, 160)}`);
+      }
     }
     const offlineAlert = {
       level: 'warn', rule: 'offline', title: '电费查询失败',
@@ -481,32 +490,30 @@ async function cmdCheck() {
     else await notify(a, cfg, r).catch(err => log.warn('通知发送失败:', err.message));
   }
 
-  // ---- 每日报告（每天第一次成功查询时发一次概览）
+  // ---- 每次查询报告（每次成功查询都发一条余额概览）
+  // 用户要求：每次定时/手动查询都推送到 ntfy，不再每天只发一次
   let dailySent = false;
   if (cfg.storage.dailyReport) {
-    const today = dayKey();
-    if (state.lastDailyReportDay !== today) {
-      const s24 = cloud.summarize(history, r.balance, 24);
-      const s72 = cloud.summarize(history, r.balance, 72);
-      const days = cloud.forecast(r.balance, s24.perDay ?? s72.perDay);
-      const parts = [
-        `当前余额 ${r.balance.toFixed(2)} 元`,
-        s24.consumed ? `近 24 小时用掉 ${s24.consumed.toFixed(2)} 元` : null,
-        s24.recharged ? `期间充值 ${s24.recharged.toFixed(2)} 元` : null,
-        s24.perDay ? `日均 ${s24.perDay.toFixed(2)} 元` : null,
-        days !== null ? `预计还能用 ${days} 天` : null,
-      ].filter(Boolean);
-      const daily = {
-        level: 'info', rule: 'daily', title: '电费日报',
-        message: parts.join('，') + `。\n${cloud.shortLocation(r.location, r.custRechNo)}`,
-      };
-      if (dryRun) log.info(`[dry-run] 将发送: ${daily.title} — ${daily.message}`);
-      else {
-        await notify(daily, cfg, r).catch(err => log.warn('日报发送失败:', err.message));
-        dailySent = true;
-      }
-      state.lastDailyReportDay = today;
+    const s24 = cloud.summarize(history, r.balance, 24);
+    const s72 = cloud.summarize(history, r.balance, 72);
+    const days = cloud.forecast(r.balance, s24.perDay ?? s72.perDay);
+    const parts = [
+      `当前余额 ${r.balance.toFixed(2)} 元`,
+      s24.consumed ? `近 24 小时用掉 ${s24.consumed.toFixed(2)} 元` : null,
+      s24.recharged ? `期间充值 ${s24.recharged.toFixed(2)} 元` : null,
+      s24.perDay ? `日均 ${s24.perDay.toFixed(2)} 元` : null,
+      days !== null ? `预计还能用 ${days} 天` : null,
+    ].filter(Boolean);
+    const daily = {
+      level: 'info', rule: 'daily', title: '电费日报',
+      message: parts.join('，') + `。\n${cloud.shortLocation(r.location, r.custRechNo)}`,
+    };
+    if (dryRun) log.info(`[dry-run] 将发送: ${daily.title} — ${daily.message}`);
+    else {
+      await notify(daily, cfg, r).catch(err => log.warn('日报发送失败:', err.message));
+      dailySent = true;
     }
+    state.lastDailyReportDay = dayKey();
   }
 
   persistState(cfg, state);
@@ -618,7 +625,7 @@ async function cmdHistory() {
   const tail = rows.slice(-limit);
   if (flag('json')) { process.stdout.write(JSON.stringify(tail, null, 2) + '\n'); return; }
   for (const r of tail) {
-    const t = new Date(r.queriedAt).toLocaleString('zh-CN', { hour12: false });
+    const t = time.fmtBeijing(new Date(r.queriedAt));
     log.info(`${t}  ${Number(r.balance).toFixed(2)} 元`);
   }
   const first = tail[0], last = tail[tail.length - 1];

@@ -5,7 +5,7 @@
     "password": "统一身份认证密码（原样填写；若密码本身以 @ 开头，@ 是密码的一部分）"
   },
   "meter": {
-    "custRechNo": "示例园#1#A101",
+    "custRechNo": "鲁韵园#1#A101",
     "rechMerMapId": 338,
     "merchantId": 111267,
     "userInfoId": null
@@ -44,6 +44,7 @@
     "historyFile": "data/history.jsonl",
     "logFile": "data/watch.log",
     "latestFile": "data/latest.json",
+    "_dailyReport说明": "true 时每次查询成功后都推一条余额日报到手机；只想收预警就设 false",
     "dailyReport": true
   },
   "cloud": {
