@@ -1,0 +1,181 @@
+name: 电费查询
+
+# 说明：
+# - GitHub Actions 的 schedule 最小间隔是 5 分钟，但高峰期会延迟 5–30 分钟，没有 SLA。
+# - 免费账号的【私有仓库】不支持 schedule，必须用公开仓库；
+#   若要用私有仓库，请改用外部 cron（cron-job.org 等）调用 workflow_dispatch。
+# - 公开仓库连续 60 天无提交，schedule 会被自动禁用，需要定期 push 或手动 enable。
+
+on:
+  schedule:
+    # 每 2 小时一次，只在 08:00–24:00 之间跑（UTC+8 时区）。
+    # 凌晨 0:00–8:00 不查询：那段时间没人看，也省额度。
+    # 实际触发时间点：08,10,12,14,16,18,20,22 点。
+    - cron: '0 8-23/2 * * *'
+      timezone: 'Asia/Shanghai'
+  # 允许手动触发（私有仓库 + 外部 cron 方案就靠这个）
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '忽略生效时段，强制查询'
+        type: boolean
+        default: false
+      dry_run:
+        description: '只打印不真正发通知'
+        type: boolean
+        default: false
+
+# 同一时间只跑一个，避免两次查询互相覆盖状态
+concurrency:
+  group: elec-check
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 需要写回数据分支/提交快照
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 验签算法和快照统计都是纯函数，出错会静默产生错误数据，先跑一遍单测。
+      - name: 单元测试
+        run: npm test
+
+      # 仓库若被误推了隐私文件，这里会直接失败（而不是等到别人发现）。
+      - name: 隐私自检
+        run: node scripts/preflight.js
+
+      # 会话、去重状态、历史记录都存在 data/ 里。
+      # Actions 每次都是全新容器，必须靠 cache 把上一轮的状态捞回来。
+      # cache 是 best-effort（7 天不访问会被清理），丢了也只是重新登录一次。
+      - name: 恢复状态缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/state.json
+            data/history.jsonl
+          key: elec-state-${{ github.run_id }}
+          restore-keys: |
+            elec-state-
+
+      - name: 执行查询
+        env:
+          QLGYDX_USER: ${{ secrets.QLGYDX_USER }}
+          QLGYDX_PASS: ${{ secrets.QLGYDX_PASS }}
+          QLGYDX_METER: ${{ secrets.QLGYDX_METER }}
+          # 推送渠道：配了哪个用哪个，都不配就只写日志
+          QLGYDX_NTFY_TOPIC: ${{ secrets.QLGYDX_NTFY_TOPIC }}
+          QLGYDX_PUSHPLUS: ${{ secrets.QLGYDX_PUSHPLUS }}
+          # 快照里是否打码房号。仓库是私有的话可以留空（保留真实房号，App 上更直观）；
+          # 打算公开仓库就设成 1，快照里的房号会变成 ***。
+          QLGYDX_REDACT: ${{ secrets.QLGYDX_REDACT }}
+          FORCE: ${{ inputs.force }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=""
+          if [ "$FORCE" = "true" ]; then ARGS="$ARGS --force"; fi
+          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          node bin/elec.js check $ARGS
+
+      # 公开仓库的运行日志所有人可见，所以只打印统计部分，
+      # 不逐字 cat 整个 JSON（避免哪天脱敏漏了就直接进日志）。
+      - name: 打印快照摘要
+        if: always()
+        run: |
+          if [ -f data/latest.json ]; then
+            node -e "
+              const j = JSON.parse(require('fs').readFileSync('data/latest.json','utf8'));
+              console.log('余额:', j.balance, '元  等级:', j.level);
+              console.log('位置:', j.location, '  电表:', j.custRechNo);
+              console.log('24h 消耗:', j.stats?.last24h?.consumed, ' 预测可用天数:', j.stats?.forecastDays);
+              console.log('生成时间:', j.generatedAt);
+            "
+          fi
+
+      - name: 上传快照为构建产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elec-latest
+          path: |
+            data/latest.json
+            data/latest.js
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # 把快照 + 历史数据 + README 折线图推到一个独立的 orphan 分支。
+      # 用独立分支是为了：① 不污染主分支历史 ② 不会触发其它 workflow
+      # 同时把图表复制到 main 分支的 docs/charts/，README 用相对路径引用
+      # （私有仓库 raw 地址无 token 不可见，相对路径才能在 README 里正常渲染）。
+      - name: 发布快照到 data 分支
+        if: always() && hashFiles('data/latest.json') != ''
+        id: pub
+        env:
+          QLGYDX_REDACT: ${{ secrets.QLGYDX_REDACT }}
+          # 未设脱敏（私有仓库）= 发布历史+图表；设了脱敏（公开仓库）= 只发 latest.json
+          PUBLISH_HISTORY: ${{ secrets.QLGYDX_REDACT == '' && '1' || '' }}
+        run: |
+          set -e
+          echo "has_snapshot=$([ -f data/latest.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          git config user.name  'elec-bot'
+          git config user.email 'elec-bot@users.noreply.github.com'
+
+          mkdir -p /tmp/snapshot
+          cp data/latest.json /tmp/snapshot/latest.json
+          [ -f data/latest.js ] && cp data/latest.js /tmp/snapshot/latest.js || true
+          # 历史数据发布策略（README 折线图的数据源）：
+          #  - PUBLISH_HISTORY=1（即 QLGYDX_REDACT 未设 = 私有仓库）→ 发布
+          #  - 公开仓库设了 QLGYDX_REDACT=1 → 不发布历史，防止房间号外泄
+          if [ -f data/history.jsonl ] && [ "${PUBLISH_HISTORY:-}" = "1" ]; then
+            cp data/history.jsonl /tmp/snapshot/history.jsonl
+            node scripts/render-chart.js /tmp/snapshot/history.jsonl --out /tmp/snapshot || true
+          fi
+          # 推送前兜一层：若开了脱敏（QLGYDX_REDACT=1）而快照里房号没打码，
+          # 让 CI 直接失败而不是把真实房间号推上去。未开脱敏时只提示不拦截。
+          node scripts/check-snapshot.js data/latest.json
+
+          git checkout --orphan data-tmp 2>/dev/null || git checkout data-tmp
+          git rm -rf . --quiet || true
+          rm -rf ./* 2>/dev/null || true
+          cp -r /tmp/snapshot/* . 2>/dev/null || true
+          git add -A
+          git commit -m "snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo '没有变化，跳过提交'
+          git push origin HEAD:data --force
+
+      # 图表复制回 main 分支 docs/charts/（README 相对路径引用，私有仓库可见）
+      # 注意：if 不能用 hashFiles——前一步 orphan checkout 后工作区已变空，hashFiles 恒为空
+      # 所以把「有没有快照」的判断放进上一步的输出里
+      - name: 推图表到 main 分支
+        if: steps.pub.outputs.has_snapshot == 'true'
+        env:
+          PUBLISH_HISTORY: ${{ secrets.QLGYDX_REDACT == '' && '1' || '' }}
+        run: |
+          set -e
+          git config user.name  'elec-bot'
+          git config user.email 'elec-bot@users.noreply.github.com'
+          git fetch origin main
+          git checkout main
+          git pull origin main --ff-only
+          if [ "${PUBLISH_HISTORY:-}" = "1" ] && [ -f /tmp/snapshot/chart-3d.svg ]; then
+            mkdir -p docs/charts
+            cp /tmp/snapshot/chart-*.svg docs/charts/
+            git add docs/charts
+            git diff --cached --quiet || git commit -m "charts update $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin main
+          else
+            echo '未发布历史数据（公开仓库脱敏模式），跳过 main 分支图表'
+          fi

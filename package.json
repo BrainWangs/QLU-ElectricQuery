@@ -1,0 +1,40 @@
+{
+  "name": "qlgydx-elec",
+  "version": "1.0.0",
+  "description": "齐鲁工业大学智慧财务电费查询 + 定时监控 + 余额预警",
+  "main": "lib/qlgydx.js",
+  "bin": {
+    "elec": "bin/elec.js"
+  },
+  "scripts": {
+    "query": "node bin/elec.js query",
+    "check": "node bin/elec.js check",
+    "watch": "node bin/elec.js watch",
+    "accounts": "node bin/elec.js accounts",
+    "login": "node bin/elec.js login",
+    "history": "node bin/elec.js history",
+    "serve": "node bin/serve.js",
+    "alert-test": "node bin/elec.js alert-test",
+    "test": "node --test \"test/**/*.test.js\"",
+    "snapshot": "node bin/elec.js snapshot",
+    "preflight": "node scripts/preflight.js --staged"
+  },
+  "keywords": [
+    "qlgydx",
+    "电费",
+    "校园",
+    "监控"
+  ],
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "sm-crypto": "^0.5.8",
+    "undici": "^7.30.1"
+  },
+  "devDependencies": {
+    "js-yaml": "^5.5.0"
+  }
+}

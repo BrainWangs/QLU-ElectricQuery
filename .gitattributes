@@ -1,0 +1,17 @@
+# 统一换行符为 LF。
+#
+# 为什么需要：Windows 上 git 默认 core.autocrlf 会把文件存成 CRLF。
+#   - workflow 的 YAML 混入 CRLF 后，shell 步骤里的 heredoc / 字符串比较可能出错
+#   - 在 Windows 和 Linux 之间来回切换会产生大量"整文件改动"的假 diff
+# 这里强制 LF，让仓库里存的和 CI 里跑的都是同一份字节。
+* text=eol=lf
+
+# 这些是二进制，不要做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.apk binary

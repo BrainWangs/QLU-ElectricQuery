@@ -1,0 +1,55 @@
+{
+  "_说明": "复制为 config.json 后填写。不要把填好的 config.json 提交到仓库。",
+  "account": {
+    "username": "你的学号或工号",
+    "password": "统一身份认证密码（原样填写；若密码本身以 @ 开头，@ 是密码的一部分）"
+  },
+  "meter": {
+    "custRechNo": "示例园#1#A101",
+    "rechMerMapId": 338,
+    "merchantId": 111267,
+    "userInfoId": null
+  },
+  "schedule": {
+    "intervalMinutes": 120,
+    "activeHours": [8, 24],
+    "retryOnErrorMinutes": 10
+  },
+  "alert": {
+    "threshold": 10,
+    "criticalThreshold": 5,
+    "dailyChangePercent": 40,
+    "cooldownMinutes": 180,
+    "repeatWhileCriticalMinutes": 720,
+    "notify": {
+      "console": true,
+      "file": "data/alerts.log",
+      "webhook": "",
+
+      "ntfy": { "server": "https://ntfy.sh", "topic": "" },
+
+      "pushplus": { "token": "", "topic": "" },
+
+      "serverchan": { "sendkey": "" },
+
+      "wecom": { "webhook": "" },
+
+      "bark": { "url": "" },
+
+      "telegram": { "token": "", "chatId": "" }
+    }
+  },
+  "storage": {
+    "stateFile": "data/state.json",
+    "historyFile": "data/history.jsonl",
+    "logFile": "data/watch.log",
+    "latestFile": "data/latest.json",
+    "dailyReport": true
+  },
+  "cloud": {
+    "stateless": false,
+    "publishSnapshot": true,
+    "_redact说明": "true 时快照里的房号打码成 ***（仓库要公开时设 true）；私有仓库可留 false，手机上能直接看到是哪间宿舍",
+    "redact": false
+  }
+}

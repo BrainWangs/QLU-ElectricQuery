@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="380" viewBox="0 0 760 380" role="img" aria-label="电费余额变化（近 7 天）">
+<title>电费余额变化（近 7 天）</title>
+<text x="58" y="20" font-family="sans-serif" font-size="15" fill="#64748b" font-weight="600">电费余额变化（近 7 天）</text>
+<line x1="58" y1="342" x2="742" y2="342" stroke="#94a3b8" stroke-opacity="0.25" stroke-width="1"/>
+<text x="51" y="346" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">0</text>
+<line x1="58" y1="264.5" x2="742" y2="264.5" stroke="#94a3b8" stroke-opacity="0.25" stroke-width="1"/>
+<text x="51" y="268.5" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">25</text>
+<line x1="58" y1="187" x2="742" y2="187" stroke="#94a3b8" stroke-opacity="0.25" stroke-width="1"/>
+<text x="51" y="191" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">50</text>
+<line x1="58" y1="109.5" x2="742" y2="109.5" stroke="#94a3b8" stroke-opacity="0.25" stroke-width="1"/>
+<text x="51" y="113.5" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">75</text>
+<line x1="58" y1="32" x2="742" y2="32" stroke="#94a3b8" stroke-opacity="0.25" stroke-width="1"/>
+<text x="51" y="36" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">100</text>
+<text x="58" y="370" font-family="sans-serif" font-size="12" fill="#64748b">10/25 14:24</text>
+<text x="742" y="370" font-family="sans-serif" font-size="12" fill="#64748b" text-anchor="end">11/01 14:24</text>
+<line x1="58" y1="326.5" x2="742" y2="326.5" stroke="#dc2626" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="742" y="321.5" font-family="sans-serif" font-size="12" fill="#dc2626" text-anchor="end">告急 5 元</text>
+<line x1="58" y1="311" x2="742" y2="311" stroke="#f59e0b" stroke-opacity="0.6" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="742" y="306" font-family="sans-serif" font-size="12" fill="#f59e0b" text-anchor="end">预警 10 元</text>
+<polyline points="742.0,142.0" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="742.0" cy="142.0" r="3" fill="#16a34a"/>
+<text x="737.0" y="130.0" font-family="sans-serif" font-size="14" font-weight="700" fill="#16a34a" text-anchor="end">64.50 元</text>
+</svg>
