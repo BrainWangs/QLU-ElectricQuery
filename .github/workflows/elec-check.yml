@@ -1,0 +1,233 @@
+name: 电费查询
+
+# 说明：
+# - GitHub Actions 的 schedule 最小间隔是 5 分钟，但高峰期会延迟 5–30 分钟，没有 SLA。
+# - 免费账号的【私有仓库】不支持 schedule，必须用公开仓库；
+#   若要用私有仓库，请改用外部 cron（cron-job.org 等）调用 workflow_dispatch。
+# - 公开仓库连续 60 天无提交，schedule 会被自动禁用，需要定期 push 或手动 enable。
+
+on:
+  schedule:
+    # 每 30 分钟触发一次（UTC :07 和 :37，即北京 :07/:37）。
+    #
+    # 为什么不直接写 4 条（8/12/16/20 点各一条）：
+    #   GitHub 的 schedule 会「合并 + 丢弃」。实测 11-03~11-07 五天应触发 40 次，
+    #   实际只创建了 9 次（22%），且分钟数在 :10~:53 之间随机分布、排队 0 秒、
+    #   无任何 cancelled 记录 —— 说明任务在「创建之前」就被丢弃了，不是延迟补跑。
+    #   只写 4 条的话，很可能一天只成功 1 次。
+    #
+    # 所以策略是「多给机会 + 代码里按时段占位」：
+    #   - cron 每 30 分钟猛试（一天 48 次机会）；
+    #   - check 里判断当前落在哪个时段（8/12/16/20 点各一时段，含 30 分钟提前量）；
+    #   - 每个时段成功查一次就记标记，同一时段后续触发直接跳过。
+    # 净效果：晚几十分钟仍会补上，且同一时段绝不重复推送。
+    #
+    # 分钟用 7/37 而不是 0/30：整点是调度高峰，官方文档明说容易被延迟或丢弃。
+    - cron: '7,37 * * * *'
+  # 允许手动触发（私有仓库 + 外部 cron 方案就靠这个）
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '忽略生效时段，强制查询'
+        type: boolean
+        default: false
+      dry_run:
+        description: '只打印不真正发通知'
+        type: boolean
+        default: false
+
+# 同一时间只跑一个，避免两次查询互相覆盖状态
+concurrency:
+  group: elec-check
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 需要写回数据分支/提交快照
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 验签算法和快照统计都是纯函数，出错会静默产生错误数据，先跑一遍单测。
+      - name: 单元测试
+        run: npm test
+
+      # 会话、去重状态、历史记录都存在 data/ 里。
+      # Actions 每次都是全新容器，必须靠 cache 把上一轮的状态捞回来。
+      # cache 是 best-effort（7 天不访问会被清理），丢了也只是重新登录一次。
+      - name: 恢复状态缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/state.json
+            data/history.jsonl
+          # key 必须每轮唯一，靠 restore-keys 前缀匹配捞回上一轮的缓存。
+          # 这**不是** bug：actions/cache 的缓存是不可变的，一旦 restore 时
+          # 精确命中 primary key 就会直接跳过保存（"Cache hit occurred on the
+          # primary key ..., not saving cache."）。若把 key 固定成 elec-state-v1，
+          # 从第二轮起就永远命中同一个 key、永远不再保存，state.json 会冻结在
+          # 第一轮的内容 —— 登录会话无法复用，更要命的是 loginFailures /
+          # loginLockedUntil 永远传不到下一轮，熔断形同失效。
+          # 官方文档 tips-and-workarounds.md 明确推荐"唯一 key + restore-keys"。
+          key: elec-state-${{ github.run_id }}
+          restore-keys: |
+            elec-state-
+
+      # cache 是 best-effort（可能丢失/被清），data 分支才是历史的真正权威。
+      # 每次 run 都把 data 分支上的 history.jsonl 合并进本地缓存文件，
+      # 防止某次缓存丢失后从零开始，发布时把积累的历史覆盖掉。
+      - name: 从 data 分支补齐历史
+        run: |
+          # 逻辑已搬进 scripts/ci-merge-history.js（可本地跑、有集成测试）。
+          # 搬走的理由：这里原来是 16 行 shell，其中两个 bug 只能靠人眼发现——
+          #   1. 窄 clone 下 `origin/data` 不存在 → if 恒假 → 合并从未生效；
+          #   2. `sort -u -t'"' -k4,4` 依赖 JSON 字段字面顺序，换序就静默失效。
+          # 脚本内部仍然显式指定 refspec、仍然 mkdir -p，并改用结构化去重。
+          node scripts/ci-merge-history.js --data-dir data
+
+      - name: 执行查询
+        env:
+          QLGYDX_USER: ${{ secrets.QLGYDX_USER }}
+          QLGYDX_PASS: ${{ secrets.QLGYDX_PASS }}
+          QLGYDX_METER: ${{ secrets.QLGYDX_METER }}
+          # 推送渠道：配了哪个用哪个，都不配就只写日志
+          QLGYDX_NTFY_TOPIC: ${{ secrets.QLGYDX_NTFY_TOPIC }}
+          # 触发方式：external = 由 Cloudflare Worker 准点触发（窗口 ±10 分钟）；
+          # 留空 = 用 GitHub 自带 cron（窗口 ±30 分钟，容错优先）。
+          # 想切回 GitHub 自带定时，把下面这行删掉或改成 github 即可。
+          QLGYDX_SCHEDULE_MODE: external
+          QLGYDX_PUSHPLUS: ${{ secrets.QLGYDX_PUSHPLUS }}
+          # 快照里是否打码房号。仓库是私有的话可以留空（保留真实房号，App 上更直观）；
+          # 打算公开仓库就设成 1，快照里的房号会变成 ***。
+          QLGYDX_REDACT: ${{ secrets.QLGYDX_REDACT }}
+          FORCE: ${{ inputs.force }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          ARGS=""
+          if [ "$FORCE" = "true" ]; then ARGS="$ARGS --force"; fi
+          if [ "$DRY_RUN" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          node bin/elec.js check $ARGS
+
+      # 公开仓库的运行日志所有人可见，所以只打印统计部分，
+      # 不逐字 cat 整个 JSON（避免哪天脱敏漏了就直接进日志）。
+      - name: 打印快照摘要
+        if: always()
+        run: |
+          if [ -f data/latest.json ]; then
+            node -e "
+              const j = JSON.parse(require('fs').readFileSync('data/latest.json','utf8'));
+              console.log('余额:', j.balance, '元  等级:', j.level);
+              console.log('位置:', j.location, '  电表:', j.custRechNo);
+              console.log('24h 消耗:', j.stats?.last24h?.consumed, ' 预测可用天数:', j.stats?.forecastDays);
+              console.log('生成时间:', j.generatedAt);
+            "
+          fi
+
+      - name: 上传快照为构建产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elec-latest
+          path: |
+            data/latest.json
+            data/latest.js
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # 把快照 + 历史数据 + README 折线图推到一个独立的 orphan 分支。
+      # 用独立分支是为了：① 不污染主分支历史 ② 不会触发其它 workflow
+      # 同时把图表复制到 main 分支的 docs/charts/，README 用相对路径引用
+      # （私有仓库 raw 地址无 token 不可见，相对路径才能在 README 里正常渲染）。
+      - name: 发布快照到 data 分支
+        if: always() && hashFiles('data/latest.json') != ''
+        id: pub
+        env:
+          QLGYDX_REDACT: ${{ secrets.QLGYDX_REDACT }}
+          # 未设脱敏（私有仓库）= 发布历史+图表；设了脱敏（公开仓库）= 只发 latest.json
+          PUBLISH_HISTORY: ${{ secrets.QLGYDX_REDACT == '' && '1' || '' }}
+        run: |
+          set -e
+          echo "has_snapshot=$([ -f data/latest.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          git config user.name  'elec-bot'
+          git config user.email 'elec-bot@users.noreply.github.com'
+
+          mkdir -p /tmp/snapshot
+          cp data/latest.json /tmp/snapshot/latest.json
+
+          # 历史数据发布策略（README 折线图的数据源）：
+          #  - PUBLISH_HISTORY=1（默认，主仓私有）→ 发布，图表才有数据
+          #  - 若哪天仓库转公开，把 PUBLISH_HISTORY 设成别的值 → 不发布历史
+          #
+          # 注意：主仓**不做脱敏**（阶段 4 的决定）。隐私保护不靠这里，
+          # 而靠三处：① .gitignore 覆盖 config.json/data/；② npm test 里的
+          # 仓库扫描（test/preflight.test.js）；③ 生成公开镜像时由
+          # scripts/build-mirror.js 对整棵输出树扫描脱敏。
+          if [ -f data/history.jsonl ] && [ "${PUBLISH_HISTORY:-}" = "1" ]; then
+            cp data/history.jsonl /tmp/snapshot/history.jsonl
+            node scripts/render-chart.js /tmp/snapshot/history.jsonl --out /tmp/snapshot || true
+          fi
+
+          # 发布逻辑已搬进 scripts/ci-publish.js，它改成**增量覆盖**：
+          # 先 fetch 分支现有内容，本轮要发布的叠上去，本轮没有的保留。
+          # 原实现每轮全量重建再 orphan 覆盖，只要某轮没有 history.jsonl
+          # （比如切了 PUBLISH_HISTORY）就会把整个历史从分支上删掉。
+          #
+          # 关键：orphan checkout 会清空工作区，而本 job 结束时 actions/cache
+          # 要在工作区里找 data/state.json 与 data/history.jsonl 来存缓存。
+          # 先把 data/ 备份出去，发布完再放回来，否则缓存永远存不上
+          # （症状：Post 阶段 "Path Validation Error"，history 每次从零开始）。
+          rm -rf /tmp/elec-data-backup
+          cp -r data /tmp/elec-data-backup
+
+          node scripts/ci-publish.js \
+            --snapshot /tmp/snapshot/latest.json \
+            --history /tmp/snapshot/history.jsonl \
+            --charts /tmp/snapshot \
+            --publish-history "${PUBLISH_HISTORY:+1}" || PUB_RC=$?
+
+          # 无论发布成败都把 data/ 放回工作区，让 post-job 的缓存保存能找到文件
+          rm -rf data
+          cp -r /tmp/elec-data-backup data
+
+          # 发布失败必须让整个 job 失败（不能因为"已恢复 data/"就吞掉）
+          if [ -n "${PUB_RC:-}" ]; then exit "$PUB_RC"; fi
+
+      # 图表复制回 main 分支 docs/charts/（README 相对路径引用，私有仓库可见）
+      # 注意：if 不能用 hashFiles——前一步 orphan checkout 后工作区已变空，hashFiles 恒为空
+      # 所以把「有没有快照」的判断放进上一步的输出里
+      - name: 推图表到 main 分支
+        if: steps.pub.outputs.has_snapshot == 'true'
+        env:
+          PUBLISH_HISTORY: ${{ secrets.QLGYDX_REDACT == '' && '1' || '' }}
+        run: |
+          set -e
+          git config user.name  'elec-bot'
+          git config user.email 'elec-bot@users.noreply.github.com'
+          git fetch origin main
+          git checkout main
+          git pull origin main --ff-only
+          if [ "${PUBLISH_HISTORY:-}" = "1" ] && [ -f /tmp/snapshot/chart-3d.svg ]; then
+            mkdir -p docs/charts
+            cp /tmp/snapshot/chart-*.svg docs/charts/
+            # 热力图（最近 30 天每日消耗）；文件不存在时 cp 会报错，用 || true 兜住
+            cp /tmp/snapshot/heatmap.svg docs/charts/ 2>/dev/null || true
+            git add docs/charts
+            git diff --cached --quiet || git commit -m "charts update $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin main
+          else
+            echo '未发布历史数据（公开仓库脱敏模式），跳过 main 分支图表'
+          fi

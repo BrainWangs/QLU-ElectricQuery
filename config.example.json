@@ -1,0 +1,79 @@
+{
+  "_说明": "复制为 config.json 后填写。不要把填好的 config.json 提交到仓库。",
+  "_说明_schedule": "slots 决定每天在几点查（北京小时）；mode 决定谁在计时（github=自带 cron 容错 30 分钟 / external=外部准点 10 分钟）；windowMinutes 写 null 表示按 mode 自动定宽。",
+  "account": {
+    "username": "your_student_id",
+    "password": "your_password"
+  },
+  "meter": {
+    "custRechNo": "示例园#1#A101",
+    "rechMerMapId": 338,
+    "merchantId": 111267,
+    "userInfoId": 12345678
+  },
+  "schedule": {
+    "mode": "github",
+    "slots": [
+      8,
+      12,
+      16,
+      20
+    ],
+    "windowMinutes": null,
+    "closeMinutes": 1420,
+    "activeHours": [
+      8,
+      24
+    ],
+    "pushHours": [
+      8,
+      22
+    ],
+    "retryOnErrorMinutes": 10
+  },
+  "alert": {
+    "threshold": 10,
+    "criticalThreshold": 5,
+    "dailyChangePercent": 40,
+    "cooldownMinutes": 180,
+    "repeatWhileCriticalMinutes": 720,
+    "notify": {
+      "console": true,
+      "file": "data/alerts.log",
+      "webhook": "",
+      "ntfy": {
+        "server": "https://ntfy.sh",
+        "topic": "your-ntfy-topic"
+      },
+      "pushplus": {
+        "token": "",
+        "topic": ""
+      },
+      "serverchan": {
+        "sendkey": ""
+      },
+      "wecom": {
+        "webhook": ""
+      },
+      "bark": {
+        "url": ""
+      },
+      "telegram": {
+        "token": "",
+        "chatId": ""
+      }
+    }
+  },
+  "storage": {
+    "stateFile": "data/state.json",
+    "historyFile": "data/history.jsonl",
+    "logFile": "data/logs/elec.log",
+    "latestFile": "data/latest.json",
+    "_dailyReport说明": "true 时在 pushHours 时段内每次查询成功都推一条余额概览；只想收预警就设 false",
+    "dailyReport": true
+  },
+  "cloud": {
+    "stateless": false,
+    "publishSnapshot": true
+  }
+}

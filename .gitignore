@@ -1,0 +1,40 @@
+# 真实配置（含账号密码、电表号）—— 绝不入库
+config.json
+
+# 运行时数据（含会话 cookie、历史、快照）
+data/
+
+# 依赖
+node_modules/
+
+# 逆向分析残留（一次性使用，不参与运行）
+vendor.js
+main.js
+main.*.chunk.js
+slJs.js
+sLCry.js
+slLog.js
+chunks/
+login.html
+cookies.txt
+headers.txt
+probe/
+vendor-seg.js
+
+# 编辑器/系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# 环境变量文件（可能含密码，别提交）
+.env
+.env.*
+!.env.example
+
+# 临时/备份
+*.bak
+*.tmp
+*.part
+*.orig
